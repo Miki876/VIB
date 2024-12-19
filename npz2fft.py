@@ -1,102 +1,213 @@
-import sys, os  # System and OS libraries for interacting with the file system
-import numpy as np  # Library for numerical computations
-import matplotlib.pyplot as plt  # Library for plotting
+
+import sys, os
+import numpy as np
+import matplotlib.pyplot as plt
+import cv2
+from sklearn import preprocessing
 from numpy.fft import fft, ifft
-from array import array
 
-MeasFolders = r"G:\Measurements\241112_RezgesSzakdoga\241406_Tesztpad\measurements\TesztPadRezgésTerjedés"
-Outdir = r"G:\Measurements\241112_RezgesSzakdoga\241406_Tesztpad\measurements\rezgesterjedes_result"
+#wdir = r"G:\Measurements\241112_RezgesSzakdoga\241406_Tesztpad\measurements\devicetester_measurements\mot_8_dricer_1\M"
+wdir = r"C:\\thesos_python\\241406_Tesztpad\\241406_Tesztpad\\devicetester_measurements\\mot_8_test_1\\81"
+#measurement_1 = r"C:\\thesos_python\\241406_Tesztpad\\241406_Tesztpad\\devicetester_measurements\\mot_8_test_2\\82"
+#measurement_1 = r"C:\\thesos_python\\241406_Tesztpad\\241406_Tesztpad\\devicetester_measurements\\mot_8_test_3\\83"
 
-folders = os.listdir(MeasFolders)
-#print(folders)
 
-CH1Vibs = []
-CH2Vibs = []
-CH3Vibs = []
-
-files = os.listdir(os.path.join(MeasFolders,folders[0]))
+files = os.listdir(wdir)
 
 speeds = []
+torques = []
+currents = []
+
+asdsf = []
+
 for file in files:
-    fname = file.split("_")
-    if fname[1] == "vib.npz":
-        fnamestrs = fname[0].split(" ")
-        speedstr = fnamestrs[1]
-        speeds.append(int(speedstr[1::]))
-#print(speeds)
+    ftype = file.split('_')
+    measmode = ftype[0]
+    ftype = ftype[1]
+    ftype = ftype.split('.')
+    ftype = ftype[0]
 
-for speed in speeds:
+    if ftype == "dyn":
+        dynfile = np.load(os.path.join(wdir,file))
+        torque = dynfile['arr_0']
+        speed = dynfile['arr_1']
+        power = dynfile['arr_2']
+        _current = dynfile['arr_3']
 
-    fname = "G3 S"+ str(speed) +" A20_vib.npz"
-    
-    for folder in folders:
+        _current = _current*2
+        torque = torque * 0.001
+        speed = speed * 0.1
 
-            # Load vibration data
+        index = 25
 
-        vibfile = np.load(os.path.join(MeasFolders,folder, fname))
+        try:
+            asdsf.append(torque[index])
+            cim = _current[index]
+        except:
+            asdsf.append(0)
 
-        #print(folder, file)
+        avgspeed = np.mean(speed)
 
-        crop = 1000
+        speeds.append(np.max(speed))
+        torques.append(np.max(torque))
 
-        fftlength = 20000-crop
-        sr = 2000
+        # plt.plot(_current,torque)
+        # plt.title(str(str(round(avgspeed,1)) + " rpm"))
+        # plt.show()
 
-        freq = np.fft.fftfreq(fftlength,1/sr)
+        # plt.plot(torque)
+        # plt.plot(speed)
+        # plt.plot(power)
+        # plt.plot(_current)
+        # plt.title(measmode)
+        # plt.show()
 
-        window = np.hamming(fftlength)
+    else:
+
+        dyn = file.split('_')
+        dyn = str(dyn[0]+"_dyn.npz")
+        dynfile = np.load(os.path.join(wdir,dyn))
+        torque = dynfile['arr_0']
+        speed = dynfile['arr_1']
+        power = dynfile['arr_2']
+        _current = dynfile['arr_3']
+
+        _current = _current*2
+        torque = torque * 0.001
+        speed = speed * 0.1
+
+        freq = np.linspace(1000,0,9)
+
+        speed_low = int(np.min(speed) / 60)
+        speed_high = int(np.max(speed) / 60)
+
+        vibfile = np.load(os.path.join(wdir,file))
+
+        CH1 = vibfile['arr_0']
+        CH2 = vibfile['arr_1']
+        CH3 = vibfile['arr_2']
+
+        CH1 = CH1[:,:1000]
+        CH1 = np.log10(CH1 + 1e-12)
+        CH2 = CH2[:,:1000]
+        CH2 = np.log10(CH2 + 1e-12)
+        CH3 = CH3[:,:1000]
+        CH3 = np.log10(CH3 + 1e-12)
+
+        thresh = 0
+        lpf = 50
+
+        mask = np.arange(speed_low,speed_high)
+
+        CH1[:,mask] = thresh
+        CH2[:,mask] = thresh
+        CH3[:,mask] = thresh
+
+        #- értékeket eldobjuk
+        CH1[CH1 < thresh] = thresh
+        CH1[:,50] = thresh
+        # CH1[:,150] = thresh
+        # CH1[:,250] = thresh
+        # CH1[:,300] = thresh
+        # CH1[:,350] = thresh
+        CH1[:,0] = thresh
 
 
-        CH1 = np.array(vibfile['arr_0'])  # Channel 1 data
-        CH2 = np.array(vibfile['arr_1'])  # Channel 2 data
-        CH3 = np.array(vibfile['arr_2'])  # Channel 3 data
 
-        CH1 = CH1[0]
-        CH2 = CH2[0]
-        CH3 = CH3[0]
+        CH1_lowpass = CH1[:,:lpf]
 
-        CH1_W = CH1[crop::] * window
-        CH2_W = CH2[crop::] * window
-        CH3_W = CH3[crop::] * window
+        CH2[CH2 < thresh] = thresh
+        CH2[:,50] = thresh
+        # CH2[:,150] = thresh
+        # CH2[:,250] = thresh
+        # CH2[:,300] = thresh
+        # CH2[:,350] = thresh
+        CH2[:,0] = thresh
 
-            # plt.plot(CH1[crop::])
-            # plt.plot(CH2[crop::])
-            # plt.plot(CH3[crop::])
-            # plt.show()
+        CH2_lowpass = CH2[:,:lpf]
 
-        CH1_FFT=abs(fft(CH1_W))
-        CH2_FFT=abs(fft(CH2_W))
-        CH3_FFT=abs(fft(CH3_W))
+        CH3[CH3 < thresh] = thresh
+        CH3[:,50] = thresh
+        # CH3[:,150] = thresh
+        # CH3[:,250] = thresh
+        # CH3[:,300] = thresh
+        # CH3[:,350] = thresh
+        CH3[:,0] = thresh
 
-        CH1_FFT = 10*np.log10(CH1_FFT + 1e-12)
-        CH2_FFT = 10*np.log10(CH2_FFT + 1e-12)
-        CH3_FFT = 10*np.log10(CH3_FFT + 1e-12)
-
-            # print(CH1_FFT)
-
-        length = int(len(freq)/2)
-
-            # plt.plot(freq[0:length],CH1_FFT[0:length])
-            # plt.plot(freq[0:length],CH2_FFT[0:length])
-            # plt.plot(freq[0:length],CH3_FFT[0:length])
-
-        CH1Vibs.append(CH1_FFT[0:length])
-        CH2Vibs.append(CH2_FFT[0:length])
-        CH3Vibs.append(CH3_FFT[0:length])
-
-            # plt.imshow(CH2,aspect='auto', cmap='jet')
-            # plt.imshow(CH3,aspect='auto', cmap='jet')
-        lastFolder = folder
+        CH3_lowpass = CH3[:,:lpf]
 
         
-    #outfile = file.split(".")
+        # CH1_lowpass = np.flip(CH1_lowpass.T)
+        # CH2_lowpass = np.flip(CH2_lowpass.T)
+        # CH3_lowpass = np.flip(CH3_lowpass.T)
 
-    print(os.path.join(Outdir, str("fft_" + str(speed) + ".npz")))
+        CH1_Power = np.mean(CH1_lowpass,axis=1)
+        CH2_Power = np.mean(CH2_lowpass,axis=1)
+        CH3_Power = np.mean(CH3_lowpass,axis=1)
 
-    np.savez((os.path.join(Outdir, str("fft_" + str(speed) + ".npz"))),speed,CH1Vibs,CH2Vibs,CH3Vibs)
+        # plt.plot(CH1_Power)
+        # plt.plot(CH2_Power)
+        # plt.plot(CH3_Power)
+        # plt.show()
 
-    plt.imshow(CH1Vibs,aspect='auto',cmap='jet')
-    plt.show()
-# for samples in range(len(CH1Vibs)):
-#     plt.plot(freq[0:length],CH1Vibs[samples])
-#plt.imshow(CH1Vibs,aspect='auto',cmap='jet')
+        # CH1 = np.flip(CH1.T)
+        # CH2 = np.flip(CH2.T)
+        # CH3 = np.flip(CH3.T)
+
+        CH1 = CH1.T
+        CH2 = CH2.T
+        CH3 = CH3.T
+
+        # graph, plot = plt.subplots(2,3)
+
+        plt.subplot(2,3,1)
+        #plt.gca().set(ylim=(1,CH1.shape[0]))
+        #plt.imshow(CH1,aspect='auto',cmap='jet',interpolation='none')
+        plt.imshow(CH1,aspect='auto',cmap='jet')
+        #plt.yticks(freq)
+        #plt.xticks(torque)
+        #plt.title(measmode)
+        plt.title("FFT")
+        #plt.colorbar()
+        plt.ylabel("Frequency (Hz)")
+        plt.xlabel("time and increasing load")
+        
+        plt.subplot(2,3,2)
+        #plt.imshow(CH2,aspect='auto',cmap='jet',interpolation='none')
+        plt.imshow(CH2,aspect='auto',cmap='jet')
+        plt.ylabel("Frequency (Hz)")
+        plt.xlabel("time and increasing load")
+        
+        plt.title("FFT")
+        #plt.colorbar()
+
+        plt.subplot(2,3,3)
+        #plt.imshow(CH3,aspect='auto',cmap='jet',interpolation='none')
+        plt.imshow(CH3,aspect='auto',cmap='jet')
+        plt.ylabel("Frequency (Hz)")
+        plt.xlabel("time and increasing load")
+        
+        plt.title("FFT")
+        #plt.colorbar()
+
+        plt.subplot(2,3,4)
+        plt.plot(CH1_Power)
+        plt.xlim(0,len(CH1_Power))
+        plt.xlabel("time and increasing load")
+
+        plt.subplot(2,3,5)
+        plt.plot(CH2_Power)
+        plt.xlim(0,len(CH2_Power))
+        plt.xlabel("time and increasing load")
+
+        plt.subplot(2,3,6)
+        plt.plot(CH3_Power)
+        plt.xlim(0,len(CH3_Power))
+        
+
+        plt.show()
+
+# plt.plot(speeds, torques, 'rx')
+# #plt.plot(speeds,asdsf, 'rx')
+# plt.title(str(str(cim) + ' A'))
+# plt.show()
